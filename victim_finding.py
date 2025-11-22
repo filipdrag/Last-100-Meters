@@ -21,9 +21,22 @@ PAD_UPPER = (110, 255, 255)
 
 AREA_LOCK = 4000          # if pad contour area > this → close enough to land
 
+# ArUco victim tag settings
 VICTIM_ID = 7
 ARUCO_DICT = aruco.getPredefinedDictionary(aruco.DICT_4X4_50)
 ARUCO_PARAMS = aruco.DetectorParameters()
+
+# 8x8 X-shape pattern: 'p' = pixel on, '0' = off
+X_SHAPE = [
+    "p000000p",
+    "0p0000p0",
+    "00p00p00",
+    "000pp000",
+    "000pp000",
+    "00p00p00",
+    "0p0000p0",
+    "p000000p",
+]
 
 DEBUG = False
 
@@ -77,6 +90,15 @@ class CommandWorker:
             self.thread.join(timeout=1)
         except:
             pass
+
+    def clear(self):
+        """Remove all pending commands from the queue."""
+        while True:
+            try:
+                func, args = self.q.get_nowait()
+                self.q.task_done()
+            except queue.Empty:
+                break
 
 
 def emergency_check(drone):
@@ -168,6 +190,19 @@ def detect_victim_tag(frame_small):
 
     return None, None
 
+# Display pattern on Tello's LED matrix for 2 sec
+
+
+def pattern_on_led_matrix(tello, shape):
+    assert len(shape) == 8 and all(len(r) == 8 for r in shape), "Need 8x8"
+    pattern = "".join(shape)
+    color = "g"  # green
+    cmd = f"mled {color} {pattern}"
+    tello.send_expansion_command(cmd)
+    # time.sleep(2)
+    # Clear the LED matrix after 2 seconds
+    # tello.send_expansion_command("mled g " + "0" * 64)
+    tello.send_expansion_command("led 255 0 0")  # top LED red
 
 
 def main():
@@ -211,9 +246,10 @@ def main():
         worker.submit(drone.move_back, stripe_len)
 
     # After scan+return finished, we'll start homing in the main loop
-    state = "scan"   # or "homing" later
+    state = "scan"   # "scan" -> "victim_hover" -> "homing"
     lock_frames = 0
     running = True
+
     victim_found = False
     victim_reported = False
 
@@ -235,7 +271,7 @@ def main():
 
             # ---- STATE MACHINE ----
             if state == "scan":
-                # process smaller frame for victim detection (cheap)
+                # 1) Detect victim marker on a small frame
                 frame_small = cv2.resize(frame, (320, 240))
                 vx, vy = detect_victim_tag(frame_small)
 
@@ -245,13 +281,44 @@ def main():
                     victim_reported = True
                     # TODO: here you could also log the approximate cell later
 
-                # Wait until the worker has completed all scan commands
+                    # Stop enqueueing further motions (we already queued all at start)
+                    worker.clear()
+
+                # 2) Decide what to do when movement commands are finished
                 if worker.is_idle():
-                    print("[INFO] Scan finished → switching to HOMING")
-                    state = "homing"
-                    # make sure drone isn't still moving from last RC
                     drone.send_rc_control(0, 0, 0, 0)
-                # no vision processing here to keep it fast
+                    if victim_found:
+                        print("[INFO] Scan stopped at victim → VICTIM_HOVER")
+                        state = "victim_hover"
+                    else:
+                        print("[INFO] Scan finished, no victim → HOMING")
+                        state = "homing"
+
+            elif state == "victim_hover":
+                # 1) Show X on matrix
+                # if not victim_reported:
+                pattern_on_led_matrix(drone, X_SHAPE)
+
+                # 2) Hover for ~2 seconds, keeping ESC responsive
+                hover_start = time.time()
+                while time.time() - hover_start < 2.0:
+                    drone.send_rc_control(0, 0, 0, 0)
+                    emergency_check(drone)
+                    time.sleep(0.05)
+
+                # 3) CLEAR LED + RESET MOTION
+                drone.send_expansion_command("mled g " + "0"*64)
+                # drone.send_rc_control(0, 0, 0, 0)
+                # time.sleep(0.2)
+
+                # 4) Move left to search for the home pad
+                # print("[INFO] Moving left toward home")
+                # TODO: Dynamic left move based on scan column
+                # drone.move_left(60)
+
+                print("[INFO] Finished victim hover → HOMING")
+                state = "homing"
+                lock_frames = 0
 
             elif state == "homing":
                 # Process a smaller version of the frame for pad detection
