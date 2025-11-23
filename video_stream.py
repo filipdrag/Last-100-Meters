@@ -1,24 +1,28 @@
 import cv2
-import time
+import cv2.aruco as aruco
 from djitellopy import Tello
+import time
 
+ARUCO_DICT = aruco.getPredefinedDictionary(aruco.DICT_4X4_50)
 
-tello = Tello()
-tello.connect()
-
-tello.streamoff()
-tello.streamon()
-frame_read = tello.get_frame_read()
+t = Tello()
+t.connect()
+t.streamon()
+fr = t.get_frame_read()
 
 time.sleep(1)
 
 while True:
-    frame = frame_read.frame
+    frame = fr.frame
+    if frame is None:
+        continue
+    frame = cv2.flip(frame, 0)
 
-    if frame is not None:
-        cv2.imshow("Video Streaming", frame)
+    corners, ids, _ = aruco.detectMarkers(frame, ARUCO_DICT)
+    if ids is not None:
+        print("DETECTED:", ids.flatten())
+        aruco.drawDetectedMarkers(frame, corners, ids)
 
+    cv2.imshow("Test", frame)
     if cv2.waitKey(1) == 27:
-        frame_read.stop()
-        tello.streamoff()
         break
