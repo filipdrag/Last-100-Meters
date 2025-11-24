@@ -8,11 +8,11 @@ from djitellopy import Tello
 
 # ---------- USER SETTINGS ----------
 SCAN_WIDTH_CM = 190       # width of map area
-SCAN_HEIGHT_CM = 90       # height of map area
+SCAN_HEIGHT_CM = 80       # height of map area
 SCAN_STEP_CM = 28         # sideways distance between scan stripes
 FLYING_UP_CM = 20         # takeoff climb height
 
-CENTER_DEADBAND = 50      # px tolerance for "centered"
+CENTER_DEADBAND = 150      # px tolerance for "centered"
 CENTER_LOCK_FR = 12       # how many frames in-a-row we consider centered
 
 
@@ -111,40 +111,7 @@ def emergency_check(drone):
         raise SystemExit
 
 
-def find_pad_centroid(frame_small):
-    """
-    Detect pad in a small frame (e.g., 320x240).
-    Returns (cx, cy, area) in that SMALL frame's coordinates.
-    """
-    hsv = cv2.cvtColor(frame_small, cv2.COLOR_BGR2HSV)
-    mask = cv2.inRange(hsv, PAD_LOWER, PAD_UPPER)
-    mask = cv2.erode(mask, None, iterations=1)
-    mask = cv2.dilate(mask, None, iterations=2)
-
-    cnts, _ = cv2.findContours(
-        mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-    if not cnts:
-        return None, None, 0
-
-    c = max(cnts, key=cv2.contourArea)
-    area = cv2.contourArea(c)
-    if area < 300:
-        return None, None, 0
-
-    M = cv2.moments(c)
-    if M["m00"] == 0:
-        return None, None, 0
-    cx = int(M["m10"] / M["m00"])
-    cy = int(M["m01"] / M["m00"])
-    return cx, cy, area
-
-
-def center_over_tag(drone, cx, cy, W, H):
-    """
-    Use RC control (non-blocking) to gently nudge the drone so that the pad
-    moves towards the image center.
-    Uses coordinates from a *small* frame (e.g., 320x240).
-    """
+'''def center_over_tag(drone, cx, cy, W, H):
     ex = cx - W // 2
     ey = cy - H // 2
 
@@ -153,15 +120,17 @@ def center_over_tag(drone, cx, cy, W, H):
     fb = int(np.clip(k * ey, -7, 7))  # forward/back
     fb = -fb  # flip, depending on your camera orientation
 
-    if abs(ex) < CENTER_DEADBAND and abs(ey) < CENTER_DEADBAND:
+    if abs(ex) < (CENTER_DEADBAND + 20) and abs(ey) < (CENTER_DEADBAND + 20):
         drone.send_rc_control(0, 0, 0, 0)
         return True
+    else:
+        print(f"Not enough in the center to land")
 
     drone.send_rc_control(lr, fb, 0, 0)
     # tiny pause so we don't spam commands too fast
     time.sleep(0.03)
     return False
-
+'''
 
 def detect_tag(frame_small, target_id):
     corners, ids, _ = aruco.detectMarkers(
@@ -179,8 +148,6 @@ def detect_tag(frame_small, target_id):
     return None, None
 
 # Display pattern on Tello's LED matrix for 2 sec
-
-
 def pattern_on_led_matrix(tello, shape):
     assert len(shape) == 8 and all(len(r) == 8 for r in shape), "Need 8x8"
     pattern = "".join(shape)
@@ -205,7 +172,6 @@ def main():
     # ---- PREPARE HIGH-LEVEL FLIGHT PLAN (scan) ----
     # These commands will run in order in the background while the main loop stays responsive.
     worker.submit(drone.takeoff)
-    # worker.submit(drone.move_up, FLYING_UP_CM)
 
     # Build lawnmower scan pattern
     num_stripes = max(1, int(np.ceil(SCAN_WIDTH_CM / SCAN_STEP_CM)))
@@ -263,17 +229,20 @@ def main():
 
             # ---- STATE MACHINE ----
             if state == "scan":
-                # 1) Detect victim marker on a small frame
                 frame_small = cv2.resize(frame, (480, 360))
                 vx, vy = detect_tag(frame_small, VICTIM_ID)
 
-                if vx is not None and not victim_reported:
-                    print("Found victim!")
-                    victim_reported = True
-                    # TODO: here you could also log the approximate cell later
+                if vx is not None:
+                    # compute center offset
+                    Hs, Ws = frame_small.shape[:2]
+                    ex = vx - Ws//2
+                    ey = vy - Hs//2
+                    print("Not enough in the center")
 
-                    # Stop enqueueing further motions (we already queued all at start)
-                    worker.clear()
+                    if (abs(ex) < CENTER_DEADBAND and abs(ey) < CENTER_DEADBAND) and not victim_reported:
+                        print("Victim properly centered → stop scan")
+                        victim_reported = True
+                        worker.clear()
 
                 # 2) Decide what to do when movement commands are finished
                 if worker.is_idle():
@@ -297,52 +266,39 @@ def main():
                     time.sleep(0.05)
 
                 # 3) CLEAR LED + RESET MOTION
-                drone.send_expansion_command("mled g " + "0"*64)
-                # print("[INFO] Finished victim hover → HOMING")
-                # state = "homing"
+                # drone.send_expansion_command("mled g " + "0"*64)
+                drone.send_expansion_command("mled g 0")
                 print("[INFO] Finished victim hover → RETURN_PATH")
-                state = "return_path"
-                lock_frames = 0
-
-            elif state == "return_path":
-                print("[INFO] Executing return-to-home path...")
-                # 1) Move back along the last stripe
-                worker.submit(drone.move_back, stripe_len)
-
-                # 2) Move left all the way to stripe 0
-                print("[TEST] num_stripes: " + str(num_stripes))
-                worker.submit(drone.move_left, SCAN_STEP_CM *
-                              (num_stripes - 1))
-
-                print("[INFO] Path executed → switching to HOMING")
                 state = "homing"
-                lock_frames = 0
-                continue
 
             elif state == "homing":
-                hx, hy = detect_tag(frame_small, HOME_ID)
+                print("[INFO] Executing return path now...")
 
-                if hx is None:
-                    print("I'm here")
-                    lock_frames = 0
-                else:
-                    Hs, Ws = frame_small.shape[:2]
-                    centered = center_over_tag(drone, hx, hy, Ws, Hs)
+                # Stop worker thread fully
+                worker.clear()
+                worker.stop()
+                time.sleep(0.2)   # small delay to avoid race condition
 
-                    if centered:
-                        lock_frames += 1
-                        print("[INFO] Centered:", lock_frames)
-                    else:
-                        lock_frames = 0
+                drone.send_rc_control(0, 0, 0, 0)
+                time.sleep(0.2)
 
-                    if lock_frames > CENTER_LOCK_FR:
-                        print("[INFO] HOME TAG CENTERED → LANDING")
-                        drone.send_rc_control(0, 0, 0, 0)
+                try:
+                    drone.move_left((SCAN_STEP_CM * (num_stripes - 1)) // 2)
+                    time.sleep(0.2)
+                    drone.move_back(stripe_len)
+                    drone.land()
+
+                except Exception as e:
+                    print("[ERROR] during return:", e)
+                    try:
                         drone.land()
-                        running = False
-                        break
+                    except:
+                        pass
 
-            # small sleep to avoid burning 100% CPU
+                # End program
+                running = False
+                break
+
             time.sleep(0.01)
 
     except SystemExit:
