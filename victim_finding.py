@@ -10,15 +10,19 @@ from djitellopy import Tello
 SCAN_WIDTH_CM = 190       # width of map area
 SCAN_HEIGHT_CM = 80       # height of map area
 SCAN_STEP_CM = 28         # sideways distance between scan stripes
-FLYING_UP_CM = 20         # takeoff climb height
 
 CENTER_DEADBAND = 150      # px tolerance for "centered"
-CENTER_LOCK_FR = 12       # how many frames in-a-row we consider centered
+GRID_CELL_CM = 14.0       # grid size in cm
 
 
-# ArUco victim tag settings
+H_GLOBAL = np.array([
+    [0.394402, 0.008998, -23.955442],
+    [-0.007386, 0.430883, -19.930107],
+    [0.000000, 0.000000,  1.000000],
+], dtype=np.float32)
+
+# ArUco settings
 VICTIM_ID = 8
-HOME_ID = 11
 ARUCO_DICT = aruco.getPredefinedDictionary(aruco.DICT_4X4_50)
 ARUCO_PARAMS = aruco.DetectorParameters()
 
@@ -111,27 +115,6 @@ def emergency_check(drone):
         raise SystemExit
 
 
-'''def center_over_tag(drone, cx, cy, W, H):
-    ex = cx - W // 2
-    ey = cy - H // 2
-
-    k = 0.04
-    lr = int(np.clip(k * ex, -7, 7))  # left/right
-    fb = int(np.clip(k * ey, -7, 7))  # forward/back
-    fb = -fb  # flip, depending on your camera orientation
-
-    if abs(ex) < (CENTER_DEADBAND + 20) and abs(ey) < (CENTER_DEADBAND + 20):
-        drone.send_rc_control(0, 0, 0, 0)
-        return True
-    else:
-        print(f"Not enough in the center to land")
-
-    drone.send_rc_control(lr, fb, 0, 0)
-    # tiny pause so we don't spam commands too fast
-    time.sleep(0.03)
-    return False
-'''
-
 def detect_tag(frame_small, target_id):
     corners, ids, _ = aruco.detectMarkers(
         frame_small, ARUCO_DICT, parameters=ARUCO_PARAMS)
@@ -147,8 +130,55 @@ def detect_tag(frame_small, target_id):
 
     return None, None
 
-# Display pattern on Tello's LED matrix for 2 sec
+
+def detect_all_tags(frame_small):
+    """
+    Detect all ArUco markers in the given frame.
+    Returns dict: {tag_id: (cx, cy)} in pixel coordinates of frame_small.
+    """
+    corners, ids, _ = aruco.detectMarkers(
+        frame_small, ARUCO_DICT, parameters=ARUCO_PARAMS)
+    tag_positions = {}
+    if ids is None:
+        return tag_positions
+
+    for i, tag_id in enumerate(ids.flatten()):
+        pts = corners[i][0]   # 4 points
+        cx = int(pts[:, 0].mean())
+        cy = int(pts[:, 1].mean())
+        tag_positions[int(tag_id)] = (cx, cy)
+    return tag_positions
+
+
+# pixel → world coordinate transform using H_GLOBAL
+def pixel_to_world(H, x, y):
+    pt = np.array([[x], [y], [1.0]], dtype=np.float32)
+    w = H @ pt
+    if w[2, 0] != 0:
+        w /= w[2, 0]
+    return float(w[0, 0]), float(w[1, 0])
+
+
+# world → grid cell label
+def world_to_grid_label(X, Y):
+    # clamp negative values
+    X = max(X, 0)
+    Y = max(Y, 0)
+
+    # compute column (numbers) and row (letters)
+    col_idx = int(X // GRID_CELL_CM)     # 0 → column 1
+    row_idx = int(Y // GRID_CELL_CM)     # 0 → row A
+
+    # convert row index to letter
+    row_letter = chr(ord('A') + row_idx)
+    # convert column index to number (1-based)
+    col_number = col_idx + 1
+
+    return f"{row_letter}{col_number}"
+
+
 def pattern_on_led_matrix(tello, shape):
+    """Display an 8x8 pattern on the LED matrix."""
     assert len(shape) == 8 and all(len(r) == 8 for r in shape), "Need 8x8"
     pattern = "".join(shape)
     color = "g"  # green
@@ -184,7 +214,7 @@ def main():
             worker.submit(drone.move_forward, stripe_len // 2)
         else:
             worker.submit(drone.move_back, stripe_len // 2)
-            worker.submit(drone.move_back, stripe_len // 2)
+            worker.submit(drone.move_back, (stripe_len // 2) + 10)
         forward = not forward
 
         if i < num_stripes - 1:
@@ -198,10 +228,9 @@ def main():
 
     # After scan+return finished, we'll start homing in the main loop
     state = "scan"   # "scan" -> "victim_hover" -> "homing"
-    lock_frames = 0
     running = True
-
     victim_reported = False
+    victim_pixel = None
 
     try:
         while running:
@@ -212,6 +241,9 @@ def main():
 
             # Flip for mirror setup
             frame = cv2.flip(frame, 0)
+
+            # small frame for detection
+            frame_small = cv2.resize(frame, (480, 360))
 
             # debug:
             frame_debug = frame.copy()
@@ -229,7 +261,7 @@ def main():
 
             # ---- STATE MACHINE ----
             if state == "scan":
-                frame_small = cv2.resize(frame, (480, 360))
+                # frame_small = cv2.resize(frame, (480, 360))
                 vx, vy = detect_tag(frame_small, VICTIM_ID)
 
                 if vx is not None:
@@ -239,9 +271,11 @@ def main():
                     ey = vy - Hs//2
                     print("Not enough in the center")
 
+                    # If victim nicely centered, stop scan
                     if (abs(ex) < CENTER_DEADBAND and abs(ey) < CENTER_DEADBAND) and not victim_reported:
                         print("Victim properly centered → stop scan")
                         victim_reported = True
+                        victim_pixel = (vx, vy)
                         worker.clear()
 
                 # 2) Decide what to do when movement commands are finished
@@ -266,9 +300,20 @@ def main():
                     time.sleep(0.05)
 
                 # 3) CLEAR LED + RESET MOTION
-                # drone.send_expansion_command("mled g " + "0"*64)
                 drone.send_expansion_command("mled g 0")
-                print("[INFO] Finished victim hover → RETURN_PATH")
+
+                # Compute victim coordinate
+                vx, vy = victim_pixel
+                Xw, Yw = pixel_to_world(H_GLOBAL, vx, vy)
+                label = world_to_grid_label(Xw, Yw)
+
+                print("====================================")
+                print(f"Victim pixel = ({vx},{vy})")
+                print(f"World coords = ({Xw:.2f} cm, {Yw:.2f} cm)")
+                print(f"Grid cell = {label}")
+                print("====================================")
+
+                print("[INFO] Finished victim hover → HOMING")
                 state = "homing"
 
             elif state == "homing":
@@ -283,9 +328,7 @@ def main():
                 time.sleep(0.2)
 
                 try:
-                    drone.move_left((SCAN_STEP_CM * (num_stripes - 1)) // 2)
-                    time.sleep(0.2)
-                    drone.move_back(stripe_len)
+                    drone.move_left((SCAN_STEP_CM * (num_stripes - 1)))
                     drone.land()
 
                 except Exception as e:
