@@ -16,9 +16,9 @@ GRID_CELL_CM = 14.0       # grid size in cm
 
 
 H_GLOBAL = np.array([
-    [0.394402, 0.008998, -23.955442],
-    [-0.007386, 0.430883, -19.930107],
-    [0.000000, 0.000000,  1.000000],
+    [0.398328, 0.029717, -28.861313],
+    [-0.009227, 0.427238, -8.519964],
+    [0.000006, 0.000129, 1.000000],
 ], dtype=np.float32)
 
 # ArUco settings
@@ -156,7 +156,7 @@ def pixel_to_world(H, x, y):
     w = H @ pt
     if w[2, 0] != 0:
         w /= w[2, 0]
-    return float(w[0, 0]), float(w[1, 0])
+    return float(w[0, 0]), float(w[1, 0])  # in cm
 
 
 # world → grid cell label
@@ -210,11 +210,11 @@ def main():
 
     for i in range(num_stripes):
         if forward:
-            worker.submit(drone.move_forward, stripe_len // 2)
+            worker.submit(drone.move_forward, (stripe_len // 2) + 20)
             worker.submit(drone.move_forward, stripe_len // 2)
         else:
             worker.submit(drone.move_back, stripe_len // 2)
-            worker.submit(drone.move_back, (stripe_len // 2) + 10)
+            worker.submit(drone.move_back, stripe_len // 2)
         forward = not forward
 
         if i < num_stripes - 1:

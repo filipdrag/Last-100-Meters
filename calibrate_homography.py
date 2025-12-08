@@ -58,8 +58,7 @@ def compute_homography_from_anchors(tag_pixels):
     if len(visible_ids) < 4:
         return None
 
-    # Use exactly 4 points (you could use more and do least-squares, but
-    # here we have exactly 4 anchors).
+    # Use exactly 4 points 
     visible_ids = visible_ids[:4]
 
     src = np.float32([tag_pixels[tid] for tid in visible_ids])  # image pixels
