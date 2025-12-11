@@ -1,1 +1,5 @@
 venv/
+venv310/
+*.dll
+*.pyd
+__pycache__/
