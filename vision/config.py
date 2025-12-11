@@ -16,3 +16,6 @@ H_GLOBAL = np.array([
 SCAN_WIDTH_CM = 190       # width of map area
 SCAN_HEIGHT_CM = 80       # height of map area
 SCAN_STEP_CM = 28         # sideways distance between scan stripes
+
+CENTER_DEADBAND = 150      # px tolerance for "centered"
+GRID_CELL_CM = 14.0       # grid size in cm

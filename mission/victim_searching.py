@@ -1,5 +1,5 @@
 import numpy as np
-
+from vision.config import CENTER_DEADBAND
 
 class VictimSearching:
 
@@ -43,15 +43,35 @@ class VictimSearching:
             self.worker.submit(self.drone.move_back, self.stripe_len)
 
   
-    #TODO: überprüfen ob richtig funktioniert
     #gives update ones tag gets detected
-    def update(self, frame):
-        
+    def update(self, frame_small):
+
         from vision.detection import detect_tag
-        vx, vy = detect_tag(frame)
+        vx, vy = detect_tag(frame_small)
+
+        state="scan"
 
         if vx is not None:
-            self.worker.clear()  
-            self.finished = True
-            return (vx, vy)  
-        return None
+            # compute center offset
+            Hs, Ws = frame_small.shape[:2]
+            ex = vx - Ws//2
+            ey = vy - Hs//2
+            print("Not enough in the center")
+
+            # If victim nicely centered, stop scan
+            if (abs(ex) < CENTER_DEADBAND and abs(ey) < CENTER_DEADBAND) and not victim_reported:
+                print("Victim properly centered → stop scan")
+                victim_reported = True
+                victim_pixel = (vx, vy)
+                self.worker.clear()
+
+        # 2) Decide what to do when movement commands are finished
+        if self.worker.is_idle():
+            self.drone.drone.send_rc_control(0, 0, 0, 0)
+            if victim_reported:
+                print("[INFO] Scan stopped at victim → VICTIM_HOVER")
+                state = "victim_hover"
+            else:
+                print("[INFO] Scan finished, no victim → HOMING")
+                state = "homing"
+        return state

@@ -26,9 +26,11 @@ class CommandWorker:
             self.q.task_done()
 
     def submit(self, func, *args):
+        """Queue a blocking drone command (e.g. drone.move_forward, drone.move_up)."""
         self.q.put((func, args))
 
     def is_idle(self):
+        """True if no more commands are queued or running."""
         return self.q.empty() and not self.active
 
     def stop(self):
@@ -37,23 +39,41 @@ class CommandWorker:
             self.thread.join(timeout=1)
         except:
             pass
+    
+    def clear(self):
+        """Remove all pending commands from the queue."""
+        while True:
+            try:
+                func, args = self.q.get_nowait()
+                self.q.task_done()
+            except queue.Empty:
+                break
 
 class DroneController:
     def __init__(self):
         self.drone = Tello()
         print("[INFO] Connecting to drone...")
         self.worker = CommandWorker(self.drone)
-
-    def connect_and_start(self):
         self.drone.connect()
         print("[INFO] Battery:", self.drone.get_battery())
+
+
         self.drone.streamon()
-
-    def get_frame(self):
-        frame_reader = self.drone.get_frame_read().frame
+        self.frame_reader = self.drone.get_frame_read()
         time.sleep(1)
-        return frame_reader
 
+
+    '''def connect_and_start(self):
+        self.drone.connect()
+        print("[INFO] Battery:", self.drone.get_battery())
+        self.drone.streamon()'''
+
+
+    #returning a frame from the drone
+    def get_frame(self):
+        return self.frame_reader.frame
+
+    #show a sign on the LED-Matrix
     def show_pattern(self, pattern_name):
         pattern = PATTERNS.get(pattern_name)
         if pattern:

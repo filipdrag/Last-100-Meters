@@ -2,13 +2,16 @@ from drone.controller import DroneController
 from drone.state import DroneState
 from mission.mission_controller import MissionController
 from vision.detection import detect_tag
+from vision.frame_processor import FrameProcessor
+from vision.config import ARUCO_DICT, ARUCO_PARAMS
 
 def main():
     drone = DroneController()
     state = DroneState()
     mission = MissionController(drone, state)
+    frame_processor = FrameProcessor(ARUCO_DICT, ARUCO_PARAMS)
 
-    drone.connect_and_start()
+    #drone.connect_and_start()
 
     try:
         while True:
