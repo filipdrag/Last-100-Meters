@@ -6,8 +6,8 @@ def emergency_check(drone):
     if key == 27:  # ESC
         print("[EMERGENCY] ESC pressed → landing!")
         try:
-            drone.send_rc_control(0, 0, 0, 0)
-            drone.land()
+            drone.drone.send_rc_control(0, 0, 0, 0)
+            drone.drone.land()
         except:
             pass
         cv2.destroyAllWindows()

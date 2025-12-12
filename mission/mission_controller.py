@@ -1,4 +1,5 @@
 from mission.victim_searching import VictimSearching
+from mission.victim_hover import VictimHover
 from vision.config import SCAN_WIDTH_CM, SCAN_HEIGHT_CM, SCAN_STEP_CM 
 
 
@@ -15,7 +16,7 @@ class MissionController:
 
         # Global emergency key
         from utils.emergency import emergency_check
-        emergency_check(self.drone.drone)
+        emergency_check(self.drone)
 
         if self.state.mode == "scan":
             self._scan(frame_small)
@@ -34,28 +35,29 @@ class MissionController:
             self.victim_search = VictimSearching(
                 drone=self.drone.drone, 
                 worker=self.drone.worker, 
+                state=self.state,
                 scan_width=SCAN_WIDTH_CM, 
                 scan_height=SCAN_HEIGHT_CM, 
                 scan_step=SCAN_STEP_CM
             )
 
-        self.state = self.victim_search.update(frame_small)
+        self.victim_pixel = self.victim_search.update(frame_small)
 
         
-
+    #hovering over patient and communicating with them
     def _victim_hover(self):
-        # TODO: LED anzeigen, Hover, Pixel→World, etc.
-        pass
+        victim_hover = VictimHover(drone=self.drone, victim_pixel=self.victim_pixel, state=self.state)
+        victim_hover.update()
 
     def _homing(self):
-        # TODO: Rückflug Logik
+        # TODO: Implementation of flying home
         pass
 
     def _route_calc(self):
-        # TODO: kürzester Weg berechnen
+        # TODO: calculation of shortest way
         pass
 
     def _guide_ambulance(self):
-        # TODO: Krankenwagen zurückführen
+        # TODO: fly to ambualnce and guide ambulance to patient
         pass
 

@@ -3,9 +3,10 @@ from vision.config import CENTER_DEADBAND
 
 class VictimSearching:
 
-    def __init__(self, drone, worker, scan_width, scan_height, scan_step):
+    def __init__(self, drone, worker, state, scan_width, scan_height, scan_step):
         self.drone = drone
         self.worker = worker
+        self.state = state
         self.scan_width = scan_width
         self.scan_height = scan_height
         self.scan_step = scan_step
@@ -49,8 +50,6 @@ class VictimSearching:
         from vision.detection import detect_tag
         vx, vy = detect_tag(frame_small)
 
-        state="scan"
-
         if vx is not None:
             # compute center offset
             Hs, Ws = frame_small.shape[:2]
@@ -70,8 +69,8 @@ class VictimSearching:
             self.drone.drone.send_rc_control(0, 0, 0, 0)
             if victim_reported:
                 print("[INFO] Scan stopped at victim → VICTIM_HOVER")
-                state = "victim_hover"
+                self.state = "victim_hover"
             else:
                 print("[INFO] Scan finished, no victim → HOMING")
-                state = "homing"
-        return state
+                self.state = "homing"
+        return victim_pixel
