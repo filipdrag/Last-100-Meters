@@ -3,10 +3,9 @@ from vision.config import CENTER_DEADBAND
 
 class VictimSearching:
 
-    def __init__(self, drone, worker, state, scan_width, scan_height, scan_step):
+    def __init__(self, drone, worker, scan_width, scan_height, scan_step):
         self.drone = drone
         self.worker = worker
-        self.state = state
         self.scan_width = scan_width
         self.scan_height = scan_height
         self.scan_step = scan_step
@@ -16,6 +15,7 @@ class VictimSearching:
         self.forward = True
         self.current_stripe = 0
         self.finished = False
+        self.victim_reported = False
 
         #prepare TakeOff
         self.worker.submit(self.drone.takeoff)
@@ -46,6 +46,8 @@ class VictimSearching:
   
     #gives update ones tag gets detected
     def update(self, frame_small):
+        state = "scan"
+        victim_pixel = None
 
         from vision.detection import detect_tag
         vx, vy = detect_tag(frame_small)
@@ -58,19 +60,19 @@ class VictimSearching:
             print("Not enough in the center")
 
             # If victim nicely centered, stop scan
-            if (abs(ex) < CENTER_DEADBAND and abs(ey) < CENTER_DEADBAND) and not victim_reported:
+            if (abs(ex) < CENTER_DEADBAND and abs(ey) < CENTER_DEADBAND) and not self.victim_reported:
                 print("Victim properly centered → stop scan")
-                victim_reported = True
+                self.victim_reported = True
                 victim_pixel = (vx, vy)
                 self.worker.clear()
 
         # 2) Decide what to do when movement commands are finished
         if self.worker.is_idle():
             self.drone.drone.send_rc_control(0, 0, 0, 0)
-            if victim_reported:
+            if self.victim_reported:
                 print("[INFO] Scan stopped at victim → VICTIM_HOVER")
-                self.state = "victim_hover"
+                state = "victim_hover"
             else:
                 print("[INFO] Scan finished, no victim → HOMING")
-                self.state = "homing"
-        return victim_pixel
+                state = "homing"
+        return state, victim_pixel

@@ -1,5 +1,6 @@
 from mission.victim_searching import VictimSearching
-from mission.victim_hover import VictimHover
+from mission.victim_hover import victim_hover
+from mission.homing import execute_homing
 from vision.config import SCAN_WIDTH_CM, SCAN_HEIGHT_CM, SCAN_STEP_CM 
 
 
@@ -11,7 +12,6 @@ class MissionController:
         self.frame_processor = frame_processor
 
     def update(self, frame):
-
         frame_small, corners, ids = self.frame_processor.process_frame(frame)
 
         # Global emergency key
@@ -27,7 +27,9 @@ class MissionController:
         elif self.state.mode == "guide_ambulance":
             self._guide_ambulance()
         elif self.state.mode == "homing":
-            self._homing()
+            return self._homing()
+        
+        return True
 
     #scanning of area and detection of victim
     def _scan(self, frame_small):
@@ -41,17 +43,19 @@ class MissionController:
                 scan_step=SCAN_STEP_CM
             )
 
-        self.victim_pixel = self.victim_search.update(frame_small)
+        self.state, self.victim_pixel = self.victim_search.update(frame_small)
 
         
     #hovering over patient and communicating with them
     def _victim_hover(self):
-        victim_hover = VictimHover(drone=self.drone, victim_pixel=self.victim_pixel, state=self.state)
-        victim_hover.update()
+        self.state = victim_hover(self.drone, self.victim_pixel, self.state)
 
+    #drone flies home from wherever it is
     def _homing(self):
-        # TODO: Implementation of flying home
-        pass
+        execute_homing(self.drone.drone, self.drone.worker)
+
+        print("[MISION] Homing complete -> mission finished")
+        return False
 
     def _route_calc(self):
         # TODO: calculation of shortest way

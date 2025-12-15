@@ -8,8 +8,9 @@ from vision.config import ARUCO_DICT, ARUCO_PARAMS
 def main():
     drone = DroneController()
     state = DroneState()
-    mission = MissionController(drone, state)
     frame_processor = FrameProcessor(ARUCO_DICT, ARUCO_PARAMS)
+    mission = MissionController(drone, state, frame_processor)
+    
 
     #drone.connect_and_start()
 
@@ -18,8 +19,13 @@ def main():
             frame = drone.get_frame()
             if frame is None:
                 continue
-            # Resize oder preprocess falls nötig
-            mission.update(frame)
+
+            keep_running = mission.update(frame)
+
+            if keep_running is False:
+                print("[Main] Mission ended")
+                break 
+            
     except KeyboardInterrupt:
         print("[INFO] Shutting down...")
     finally:
