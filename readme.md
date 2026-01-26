@@ -8,8 +8,8 @@ This project controls a **Tello drone** to locate patients and guide rescue team
 - Detect Aruco marker with visual computing
 - Communicate with "victims" via visual cues (Yes/No) ans auditive messages
 - Display patterns on LED-Matrix
-- compute shortest path depending on map
-- guide with visual signs and movements 
+- Compute shortest path depending on map
+- Guide with visual signs and movements 
 - Supports both Conda and virtual Python environments
 
 ## Installation
