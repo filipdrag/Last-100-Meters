@@ -4,11 +4,13 @@ This project controls a **Tello drone** to locate patients and guide rescue team
 
 ## Features
 
-- Fly a given path backwards so the LED matrix faces backward
-- Compress multiple steps in one direction into a single movement
-- Display LED patterns **before every movement or rotation**
-- Communicate with "victims" via visual cues (Yes/No)
-- Supports both **Conda** and **virtual Python environments**
+- Lawnmover-pattern scanning
+- Detect Aruco marker with visual computing
+- Communicate with "victims" via visual cues (Yes/No) ans auditive messages
+- Display patterns on LED-Matrix
+- compute shortest path depending on map
+- guide with visual signs and movements 
+- Supports both Conda and virtual Python environments
 
 ## Installation
 
