@@ -1,6 +1,6 @@
 # Last 100 Meters – Tello Drone Guidance
 
-This project controls a **Tello drone** to locate patients and guide rescue teams. The drone can **fly a predefined path backwards**, **display LED matrix patterns**, and perform simple **communication prompts**.
+This project controls a **Tello drone** to locate patients and guide rescue teams. The drone can **detect an Aruco marker**, **compute paths**, **fly a predefined path**, **display LED matrix patterns**, and perform simple **communication prompts**.
 
 ## Features
 
