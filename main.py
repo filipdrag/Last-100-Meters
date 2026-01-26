@@ -1,7 +1,7 @@
+import time
 from drone.controller import DroneController
 from drone.state import DroneState
 from mission.mission_controller import MissionController
-from vision.detection import detect_tag
 from vision.frame_processor import FrameProcessor
 from vision.config import ARUCO_DICT, ARUCO_PARAMS
 
@@ -10,20 +10,29 @@ def main():
     state = DroneState()
     frame_processor = FrameProcessor(ARUCO_DICT, ARUCO_PARAMS)
     mission = MissionController(drone, state, frame_processor)
+    scanning = False
     
-
-    #drone.connect_and_start()
-
+    drone.connect_and_start()
+    
+    frame_reader = drone.drone.get_frame_read()
+    time.sleep(1)
+    
+    state.yaw = 0
+    
     try:
         while True:
-            frame = drone.get_frame()
-            if frame is None:
-                continue
+            frame = None
+            
+            if (scanning):
+                frame = frame_reader.frame
+                if frame is None:
+                    continue
 
-            keep_running = mission.update(frame)
+            keep_running, scanning = mission.update(frame, scanning)
 
             if keep_running is False:
                 print("[Main] Mission ended")
+                print("[INFO] Battery:", drone.drone.get_battery())
                 break 
             
     except KeyboardInterrupt:

@@ -1,38 +1,64 @@
 import time
-import vision.transform as transform
+from utils.thermal_safety_helper import thermal_idle_big, thermal_idle_micro
+import random
 
 
+def victim_hover(drone):
+    # stop all motion commands
+    drone.drone.send_rc_control(0, 0, 0, 0)
+    time.sleep(0.2)   # IMPORTANT: exit RC timing window
 
-def victim_hover(drone, victim_pixel):
-    # 1) Show X on matrix
-    drone.show_pattern("X_SHAPE")
+    #Show +
+    drone.show_pattern("CROSS")
+    time.sleep(2)
 
-    # 2) Hover for ~2 seconds, keeping ESC responsive
-    hover_start = time.time()
-    while time.time() - hover_start < 2.0:
-        drone.drone.send_rc_control(0, 0, 0, 0)
+    
 
-        from utils.emergency import emergency_check
-        emergency_check(drone)
+def ask_yes_no(drone, voice, question, wait_timeout_s: float = 25.0):
+    #cool down drone
+    thermal_idle_big(drone)
+    
+    # Show question mark while speaking
+    drone.show_pattern("QUESTION_MARK")
+    voice.say(question)
 
-        time.sleep(0.05)
+    # Show dots while waiting for answer
+    drone.show_pattern("DOTS")
+    time.sleep(2.0)
 
-    # 3) CLEAR LED + RESET MOTION
-    drone.drone.send_expansion_command("mled g 0")
+    # Show "YES"/"NO" as moving text after recognition
+    text = random.choice(["YES", "NO"])
+    drone.show_moving_text_once(text, color="g", speed=0.08)
+    
+    drone.clear_led("g")
+    
+    #cool down drone
+    thermal_idle_big(drone)
 
-    # Compute victim coordinate
-    vx, vy = victim_pixel
-    Xw, Yw = transform.pixel_to_world(vx, vy)
-    label = transform.world_to_grid_label(Xw, Yw)
+def victim_communication(drone, voice):
+    # Optional: approach sequence (edit to your needs)
+    voice.say(
+        "We are from the ambulance service. For the following questions, answer by showing a thumbs up for yes, "
+        "or thumbs down for no."
+    )
 
-    print("====================================")
-    print(f"Victim pixel = ({vx},{vy})")
-    print(f"World coords = ({Xw:.2f} cm, {Yw:.2f} cm)")
-    print(f"Grid cell = {label}")
-    print("====================================")
+    ask_yes_no(drone, voice,"Can you hear me?")
 
-    print("[INFO] Finished victim hover → ROUTE CALCULATION")
-    state = "route_calc"
-    return state
+    ask_yes_no(
+        drone, voice, "Is thid the medical emergency that called the ambulance?")
 
-#TODO: possible further communication with patient
+    voice.say("Help is on its way.")
+
+    ask_yes_no(
+        drone, voice, "Did the medical situation get worse since the call?")
+
+    ask_yes_no(
+        drone, voice, "Are any medical actions currently being done?")
+
+    ask_yes_no(
+        drone, voice, "Is the patient in a safe and stable position?")
+
+    drone.show_pattern("CROSS")
+    voice.say("I am now heading back to guide the ambulance to you. Please stay here.")
+
+

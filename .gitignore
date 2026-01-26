@@ -6,18 +6,26 @@ __pycache__/
 *$py.class
 
 # -------------------------
-# Virtual Environments
+# Virtual / Conda Environments
 # -------------------------
 venv/
 env/
 venv310/
 .venv/
+# Conda environments
+*.conda
+*.yaml
+*.yml
+envs/
+.conda/
+conda-meta/
 
 # -------------------------
 # IDE / Editor
 # -------------------------
 .vscode/
 .idea/
+*.code-workspace
 
 # -------------------------
 # System files
@@ -32,6 +40,7 @@ Thumbs.db
 dist/
 build/
 *.egg
+*.whl
 
 # -------------------------
 # Jupyter / IPython
@@ -44,9 +53,20 @@ build/
 *.dll
 *.pyd
 *.so
+*.dylib
 
 # -------------------------
-# Optional: logs, temp
+# Logs / Temp / Runtime
 # -------------------------
 *.log
 *.tmp
+*.pid
+*.lock
+
+# -------------------------
+# Drone / Tello specific
+# -------------------------
+*.mp4
+*.avi
+*.mov
+*.mled
