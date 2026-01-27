@@ -40,7 +40,8 @@ pip install -r requirements.txt
 ## Usage
 
 1. Connect your Tello drone to your PC or laptop.
-2. Run the main script:
+2. Set up physical map (140x210 cm with 14x14cm fields) with Aruco marker
+3. Run the main script:
 
 ```bash
 python main.py
@@ -62,7 +63,9 @@ python main.py
 ## LED Matrix Patterns
 
 - CROSS – Victim found
-- UP – Moving backward
+- QUESTION MARK - Asking question
+- YES/NO - Mirrowing answer (generated randomly, due to not possible gesture recognition because of camera position)
+- UP – Moving straight
 - TURN_LEFT / TURN_RIGHT – Before rotation
 - PARKING – Parking spot reached
 - X_SHAPE – Arrived at target
